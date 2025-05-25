@@ -80,7 +80,7 @@ const TESTS: Omit<ModelConfig, "name">[] = [
   },
   // {
   //   provider: "cohere",
-  //   model: "embed-english-v3.0",
+  //   model: "embed-v4.0",
   //   apiKey: process.env.COHERE_API_KEY!,
   //   roles: ["embed"],
   // },
@@ -98,7 +98,7 @@ const TESTS: Omit<ModelConfig, "name">[] = [
   },
   // {
   //   provider: "cohere",
-  //   model: "rerank-english-v3.0",
+  //   model: "rerank-v3.5",
   //   apiKey: process.env.COHERE_API_KEY!,
   //   roles: ["rerank"],
   // },
