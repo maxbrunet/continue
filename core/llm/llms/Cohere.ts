@@ -30,6 +30,23 @@ class Cohere extends BaseLLM {
           });
           break;
         case "assistant":
+          if (m.toolCalls) {
+            messages.push({
+              role: m.role,
+              tool_calls: m.toolCalls.map((toolCall) => ({
+                id: toolCall.id,
+                type: "function",
+                function: {
+                  name: toolCall.function?.name,
+                  arguments: toolCall.function?.arguments,
+                },
+              })),
+              // Ideally the tool plan would be in this message, but it is split in another,
+              // usually the previous, this one's content is a space.
+              // tool_plan: m.content,
+            });
+            break;
+          }
           messages.push({
             role: m.role,
             content: m.content,
@@ -39,6 +56,13 @@ class Cohere extends BaseLLM {
           messages.push({
             role: m.role,
             content: stripImages(m.content),
+          });
+          break;
+        case "tool":
+          messages.push({
+            role: m.role,
+            content: m.content,
+            tool_call_id: m.toolCallId,
           });
           break;
         default:
@@ -59,6 +83,14 @@ class Cohere extends BaseLLM {
       stop_sequences: options.stop?.slice(0, Cohere.maxStopSequences),
       frequency_penalty: options.frequencyPenalty,
       presence_penalty: options.presencePenalty,
+      tools: options.tools?.map((tool) => ({
+        type: "function",
+        function: {
+          name: tool.function.name,
+          parameters: tool.function.parameters,
+          description: tool.function.description,
+        },
+      })),
     };
   }
 
@@ -100,6 +132,9 @@ class Cohere extends BaseLLM {
       return;
     }
 
+    let lastToolPlan: string | undefined;
+    let lastToolUseId: string | undefined;
+    let lastToolUseName: string | undefined;
     for await (const value of streamSse(resp)) {
       // https://docs.cohere.com/v2/docs/streaming#stream-events
       switch (value.type) {
@@ -109,6 +144,58 @@ class Cohere extends BaseLLM {
             role: "assistant",
             content: value.delta.message.content.text,
           };
+          break;
+        // https://docs.cohere.com/reference/chat-stream#request.body.messages.assistant.tool_plan
+        case "tool-plan-delta":
+          if (!lastToolPlan) {
+            lastToolPlan = "";
+          }
+          lastToolPlan = lastToolPlan.concat(value.delta.message.tool_plan);
+          break;
+        case "tool-call-start":
+          if (!lastToolPlan) {
+            throw new Error("No tool plan found");
+          }
+          lastToolUseId = value.delta.message.tool_calls.id;
+          lastToolUseName = value.delta.message.tool_calls.function.name;
+          yield {
+            role: "assistant",
+            content: lastToolPlan,
+            toolCalls: [
+              {
+                id: lastToolUseId,
+                type: "function",
+                function: {
+                  name: lastToolUseName,
+                  arguments: value.delta.message.tool_calls.function.arguments,
+                },
+              },
+            ],
+          };
+          break;
+        case "tool-call-delta":
+          if (!lastToolUseId || !lastToolUseName) {
+            throw new Error("No tool use found");
+          }
+          yield {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              {
+                id: lastToolUseId,
+                type: "function",
+                function: {
+                  name: lastToolUseName,
+                  arguments: value.delta.message.tool_calls.function.arguments,
+                },
+              },
+            ],
+          };
+          break;
+        case "tool-call-end":
+          lastToolPlan = undefined;
+          lastToolUseId = undefined;
+          lastToolUseName = undefined;
           break;
         default:
           break;

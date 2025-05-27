@@ -62,6 +62,9 @@ export const PROVIDER_TOOL_SUPPORT: Record<
       }
     }
   },
+  cohere: (_) => {
+    return true;
+  },
   gemini: (model) => {
     // All gemini models support function calling
     return model.toLowerCase().includes("gemini");
